@@ -1,0 +1,30 @@
+# DeepGuard Requirements
+# ─────────────────────────────────────────────────────────────────────
+# Install everything with one command:
+#   pip install -r requirements.txt
+#
+# GPU (CUDA) — optional but 10–30× faster:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# ─────────────────────────────────────────────────────────────────────
+
+# ── Deep Learning ─────────────────────────────────────────────────────
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ── EfficientNet backbone (pretrained ImageNet weights auto-download) ──
+timm>=0.9.0
+
+# ── Computer Vision ───────────────────────────────────────────────────
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# ── Audio Processing ──────────────────────────────────────────────────
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# ── Visualization ─────────────────────────────────────────────────────
+matplotlib>=3.7.0
+
+# ── Utilities ─────────────────────────────────────────────────────────
+numpy>=1.24.0
+scikit-learn>=1.3.0

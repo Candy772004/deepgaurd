@@ -1,0 +1,26 @@
+Exception in thread Thread-1 (load):
+Traceback (most recent call last):
+  File "C:\Users\kumar\Downloads\deepguard_v3_with_text\deepguard\ui\app.py", line 1079, in load
+    self._log_msg("Initialising DeepGuard engine...", "accent")
+  File "C:\Users\kumar\Downloads\deepguard_v3_with_text\deepguard\ui\app.py", line 1116, in _log_msg
+    self.after(0, _write)
+  File "C:\Users\kumar\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 850, in after
+    name = self._register(callit)
+  File "C:\Users\kumar\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1557, in _register
+    self.tk.createcommand(name, f)
+RuntimeError: main thread is not in main loop
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\kumar\AppData\Local\Programs\Python\Python310\lib\threading.py", line 1016, in _bootstrap_inner
+    self.run()
+  File "C:\Users\kumar\AppData\Local\Programs\Python\Python310\lib\threading.py", line 953, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\kumar\Downloads\deepguard_v3_with_text\deepguard\ui\app.py", line 1095, in load
+    self.after(0, lambda: (
+  File "C:\Users\kumar\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 850, in after
+    name = self._register(callit)
+  File "C:\Users\kumar\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1557, in _register
+    self.tk.createcommand(name, f)
+RuntimeError: main thread is not in main loop

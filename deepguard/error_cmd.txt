@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "C:\Users\kumar\Downloads\deepguard_v3_with_text\deepguard\main.py", line 12, in <module>
+    app = DeepGuardApp()
+  File "C:\Users\kumar\Downloads\deepguard_v3_with_text\deepguard\ui\app.py", line 186, in __init__
+    self._build()
+  File "C:\Users\kumar\Downloads\deepguard_v3_with_text\deepguard\ui\app.py", line 249, in _build
+    self._build_detect()
+  File "C:\Users\kumar\Downloads\deepguard_v3_with_text\deepguard\ui\app.py", line 304, in _build_detect
+    self._analyze_btn = GlowBtn(abf, "\u25b6  ANALYZE", cmd=self._analyze,
+  File "C:\Users\kumar\Downloads\deepguard_v3_with_text\deepguard\ui\app.py", line 123, in __init__
+    self._draw()
+  File "C:\Users\kumar\Downloads\deepguard_v3_with_text\deepguard\ui\app.py", line 132, in _draw
+    self.delete("all")
+  File "C:\Users\kumar\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 2852, in delete
+    self.tk.call((self._w, 'delete') + args)
+_tkinter.TclError: invalid command name "180"

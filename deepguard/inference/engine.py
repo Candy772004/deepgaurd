@@ -516,6 +516,93 @@ def format_unified_analysis(result: dict) -> dict:
     }
 
 
+def ask_bytez_scene_report(result: dict, default_report: dict) -> dict:
+    import json
+    try:
+        from bytez import Bytez
+    except ImportError:
+        return default_report
+        
+    try:
+        # User explicitly provided this key and model for Scene Generation
+        sdk = Bytez("c73b3ae05a6f4b328ce2914ae76e52ac")
+        model = sdk.model("google/gemma-4-31B-it")
+        
+        mtype = result.get("media_type", "media")
+        fname = result.get("file_name", "")
+        raw = result.get("raw_score", 0.0)
+        label = result.get("label", "UNKNOWN")
+        desc = default_report.get("detailed_description", "")
+        
+        sys_prompt = (
+            "You are an advanced AI system for image and video analysis.\n"
+            "Your task is to analyze the given image or video frame and generate a structured JSON output.\n\n"
+            "Instructions:\n"
+            "1. Determine whether the input is REAL or FAKE (AI-generated, deepfake, or manipulated).\n"
+            "2. Provide a confidence score as a percentage (e.g., 85%).\n"
+            "3. Perform forensic analysis based strictly on visible evidence:\n"
+            "   - Lighting and shadows\n"
+            "   - Texture details\n"
+            "   - Object consistency\n"
+            "   - Natural vs artificial patterns\n"
+            "4. Clearly describe what is happening in the scene.\n"
+            "5. Identify objects accurately.\n"
+            "6. Identify people only if present (otherwise return an empty array).\n"
+            "7. Describe environment and setting.\n"
+            "8. Infer a logical possible context of the scene.\n\n"
+            "Strict Rules:\n"
+            "- Output MUST be valid JSON (no extra text).\n"
+            "- Keep explanations clear, natural, and human-like.\n"
+            "- Do NOT guess identities.\n"
+            "- Keep forensic points realistic and concise (3 points only).\n"
+            "- Use simple and understandable language.\n\n"
+            "Output format:\n"
+            "{\n"
+            '  "authenticity": "Likely Real or Fake",\n'
+            '  "confidence": "XX%",\n'
+            '  "forensic_analysis": [\n'
+            '    "Point 1",\n'
+            '    "Point 2",\n'
+            '    "Point 3"\n'
+            '  ],\n'
+            '  "scene_summary": "Short one-line summary",\n'
+            '  "detailed_description": "Clear explanation of what is happening",\n'
+            '  "people": [],\n'
+            '  "objects": [],\n'
+            '  "environment": "",\n'
+            '  "activities": [],\n'
+            '  "possible_context": ""\n'
+            "}"
+        )
+        
+        user_msg = (
+            f"Media file: {fname}. Type: {mtype}. System classified as: {label} "
+            f"(raw score: {raw:.2f}). DeepGuard baseline context: {desc}."
+        )
+        
+        out = model.run([
+            {"role": "user", "content": f"{sys_prompt}\n\nHere is the target to analyze:\n{user_msg}"}
+        ])
+        
+        if out and isinstance(out, dict) and "output" in out:
+            text = out["output"]
+            if isinstance(text, list) and len(text) > 0 and "content" in text[0]:
+                text = text[0]["content"]
+            elif isinstance(text, dict) and "content" in text:
+                text = text["content"]
+            
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end != -1:
+                json_str = text[start:end+1]
+                return json.loads(json_str)
+
+        return default_report
+    except Exception as e:
+        print(f"Bytez LLM augmentation failed: {e}")
+        return default_report
+
+
 # ── Quick Summary Formatter ───────────────────────────────────────────────────
 def format_quick_summary(result: dict) -> dict:
     """
@@ -683,8 +770,11 @@ class DeepGuardEngine:
         result["file_path"] = str(file_path)
         result["file_name"] = Path(file_path).name
 
-        # 1. Unified combined forensic + scene analysis
-        result["analysis_report"] = format_unified_analysis(result)
+        # 1. Unified combined forensic + scene analysis (Hardcoded base)
+        base_report = format_unified_analysis(result)
+        
+        # 1b. Try to enrich using Bytez LLM if possible
+        result["analysis_report"] = ask_bytez_scene_report(result, base_report)
 
         # 2. Quick 4-field summary
         result["quick_summary"] = format_quick_summary(result)

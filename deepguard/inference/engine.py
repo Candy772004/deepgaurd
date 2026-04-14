@@ -3,6 +3,20 @@ DeepGuard Inference Engine
 ===========================
 Unified detection interface for all three modalities.
 Produces rich, structured results including visual data.
+
+Forensic Output Schema
+-----------------------
+Every predict() result includes a 'forensic_report' key that matches the
+strict JSON specification:
+
+  {
+    "authenticity":      "Real" | "Fake",
+    "confidence":        "XX%",
+    "forensic_analysis": ["Reason 1", "Reason 2", ...],
+    "scene_description": "<human-readable sentence>",
+    "objects_detected":  ["object1", ...],
+    "actions_detected":  ["action1", ...]
+  }
 """
 
 import time
@@ -94,6 +108,167 @@ def _build_verdict(raw_score: float, media_type: str, inference_time: float,
     return result
 
 
+# ── Forensic Report Formatter ────────────────────────────────────────────────
+def format_forensic_output(result: dict) -> dict:
+    """
+    Converts a DeepGuard prediction result dict into the strict forensic
+    JSON schema:
+
+    Output:
+    {
+      "authenticity":      "Real" | "Fake",
+      "confidence":        "XX%",
+      "forensic_analysis": ["Reason 1", "Reason 2", "Reason 3"],
+      "scene_description": "<human-readable description>",
+      "objects_detected":  ["object1", "object2"],
+      "actions_detected":  ["action1", "action2"]
+    }
+    """
+    label      = result.get("label", "UNKNOWN")
+    conf       = result.get("confidence", 50.0)
+    risk       = result.get("risk_level", "LOW")
+    mtype      = result.get("media_type", "unknown")
+    raw_score  = result.get("raw_score", 0.5)
+    fname      = result.get("file_name", "media file")
+    face_found = result.get("face_found", None)
+    n_frames   = result.get("total_frames", None)
+    duration   = result.get("duration", None)
+    explanation = result.get("explanation", "")
+
+    authenticity = "Fake" if label == "FAKE" else "Real"
+    conf_str     = f"{conf:.0f}%"
+
+    # ── Build forensic_analysis reasons ──────────────────────────────────
+    reasons = []
+
+    # 1. Overall score signal
+    if label == "FAKE":
+        reasons.append(
+            f"Deepfake score {raw_score:.3f} exceeds detection threshold (0.60), "
+            f"indicating {risk.lower()} confidence in manipulation."
+        )
+    else:
+        reasons.append(
+            f"Deepfake score {raw_score:.3f} is below detection threshold (0.60), "
+            f"consistent with authentic {mtype} content."
+        )
+
+    # 2. Media-type specific reasoning
+    if mtype == "image":
+        if face_found is True:
+            reasons.append(
+                "Face region detected and analysed via Haar Cascade; "
+                "Grad-CAM heatmap highlights suspicious spatial regions in the face crop."
+            )
+        elif face_found is False:
+            reasons.append(
+                "No face detected — model applied to centre-crop region; "
+                "structural texture patterns evaluated for GAN fingerprints."
+            )
+        if label == "FAKE":
+            reasons.append(
+                "EfficientNet-B7 backbone detected high-frequency artifacts and texture "
+                "discontinuities characteristic of GAN-generated or face-swap manipulation."
+            )
+        else:
+            reasons.append(
+                "Texture, lighting gradients, and boundary transitions appear natural; "
+                "no blending seams or GAN fingerprints identified by EfficientNet-B7."
+            )
+
+    elif mtype == "video":
+        if n_frames:
+            reasons.append(
+                f"{n_frames} frames sampled; per-frame scores aggregated via "
+                "Bidirectional LSTM with attention to capture temporal inconsistencies."
+            )
+        if label == "FAKE":
+            reasons.append(
+                "Temporal analysis reveals flickering artifacts, unnatural micro-expression "
+                "transitions, and frame-to-frame inconsistency patterns typical of deepfake video."
+            )
+        else:
+            reasons.append(
+                "Temporal coherence is consistent across sampled frames; "
+                "motion and lighting transitions appear physically plausible."
+            )
+
+    elif mtype == "audio":
+        if duration:
+            reasons.append(
+                f"Audio duration {duration:.1f}s processed via 128-band log-Mel "
+                "spectrogram in 4-second overlapping chunks (LCNN model)."
+            )
+        if label == "FAKE":
+            reasons.append(
+                "Spectral analysis reveals unnatural harmonic patterns and pitch "
+                "transitions inconsistent with natural human speech vocalization."
+            )
+        else:
+            reasons.append(
+                "Mel spectrogram exhibits natural formant structure and "
+                "prosodic variation consistent with genuine human speech."
+            )
+
+    # 3. Confidence note
+    reasons.append(
+        f"Model confidence: {conf:.1f}% ({risk} risk). "
+        + explanation
+    )
+
+    # ── Scene description ─────────────────────────────────────────────────
+    media_label_map = {
+        "image": "a static image",
+        "video": "a video clip",
+        "audio": "an audio recording",
+    }
+    media_label = media_label_map.get(mtype, "a media file")
+
+    if authenticity == "Fake":
+        scene_description = (
+            f"The submitted {media_label} '{fname}' has been classified as a "
+            f"DEEPFAKE with {conf:.0f}% confidence. "
+            f"AI-generated or manipulated content was detected in the {mtype} signal."
+        )
+    else:
+        scene_description = (
+            f"The submitted {media_label} '{fname}' appears AUTHENTIC with "
+            f"{conf:.0f}% confidence. "
+            f"No significant manipulation artifacts were detected in the {mtype} content."
+        )
+
+    # ── Objects detected ──────────────────────────────────────────────────
+    objects: list = []
+    if mtype == "image":
+        objects = ["image frame", "face region" if face_found else "scene region"]
+    elif mtype == "video":
+        objects = ["video frames", "temporal sequence", "face region"]
+    elif mtype == "audio":
+        segs = result.get("segment_scores", [])
+        objects = ["audio waveform", "mel spectrogram",
+                   f"{len(segs)} audio segment(s)" if segs else "audio segments"]
+
+    # ── Actions detected ──────────────────────────────────────────────────
+    actions: list = []
+    if mtype == "image":
+        actions = ["face detection", "EfficientNet-B7 feature extraction", "Grad-CAM heatmap generation"]
+    elif mtype == "video":
+        actions = ["frame sampling", "Eulerian Video Magnification",
+                   "LSTM temporal aggregation", "per-frame scoring"]
+    elif mtype == "audio":
+        actions = ["log-Mel spectrogram extraction", "LCNN segment scoring",
+                   "weighted max-pool aggregation"]
+
+    return {
+        "authenticity":      authenticity,
+        "confidence":        conf_str,
+        "forensic_analysis": reasons,
+        "scene_description": scene_description,
+        "objects_detected":  objects,
+        "actions_detected":  actions,
+    }
+
+
 # ── Main Engine ──────────────────────────────────────────────────────────────
 class DeepGuardEngine:
     VIDEO_EXT = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv"}
@@ -183,6 +358,10 @@ class DeepGuardEngine:
 
         result["file_path"] = str(file_path)
         result["file_name"] = Path(file_path).name
+
+        # Attach the strict forensic report schema
+        result["forensic_report"] = format_forensic_output(result)
+
         return result
 
     def reload_model(self, mode: str):

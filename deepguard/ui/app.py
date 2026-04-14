@@ -1308,19 +1308,27 @@ class DeepGuardApp(tk.Tk):
             initialfile=f"deepguard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         )
         if path:
-            safe = {k: v for k, v in self._result.items()
-                    if not isinstance(v, type(None))
-                    and k not in ("gradcam","face_crop","full_mel")}
-            # Convert numpy arrays to lists
-            for k, v in list(safe.items()):
-                try:
-                    import numpy as np
-                    if isinstance(v, np.ndarray): safe[k] = v.tolist()
-                except Exception: pass
+            # Prefer the strict forensic schema if available
+            forensic = self._result.get("forensic_report")
+            if forensic:
+                export_data = forensic
+            else:
+                export_data = {k: v for k, v in self._result.items()
+                               if not isinstance(v, type(None))
+                               and k not in ("gradcam", "face_crop", "full_mel",
+                                             "forensic_report")}
+                # Convert numpy arrays to lists
+                for k, v in list(export_data.items()):
+                    try:
+                        import numpy as np
+                        if isinstance(v, np.ndarray):
+                            export_data[k] = v.tolist()
+                    except Exception:
+                        pass
             with open(path, "w") as f:
-                json.dump(safe, f, indent=2)
-            self._log_msg(f"Exported: {Path(path).name}", "ok")
-            messagebox.showinfo("Saved", f"Result saved to:\n{path}")
+                json.dump(export_data, f, indent=2)
+            self._log_msg(f"Exported forensic report: {Path(path).name}", "ok")
+            messagebox.showinfo("Saved", f"Forensic report saved to:\n{path}")
 
     def _export_csv(self):
         if not self._history:

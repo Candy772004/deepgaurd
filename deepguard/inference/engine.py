@@ -516,28 +516,21 @@ def format_unified_analysis(result: dict) -> dict:
     }
 
 
-def ask_gpt_vision_report(result: dict, default_report: dict) -> dict:
+def ask_bytez_scene_report(result: dict, default_report: dict) -> dict:
     import json
-    import os
-    import base64
+    
     try:
-        from openai import OpenAI
-        import cv2
+        from bytez import Bytez
     except ImportError:
         return default_report
         
     try:
-        # User needs to set OPENAI_API_KEY environment variable, or initialize below.
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            print("OPENAI_API_KEY not found. Using baseline fallback.")
-            return default_report
-
-        client = OpenAI(api_key=api_key)
+        # User explicitly provided this key and model for Scene Generation
+        sdk = Bytez("c73b3ae05a6f4b328ce2914ae76e52ac")
+        model = sdk.model("openai/gpt-4.1-nano")
         
         mtype = result.get("media_type", "media")
         fname = result.get("file_name", "")
-        fpath = result.get("file_path", "")
         raw = result.get("raw_score", 0.0)
         label = result.get("label", "UNKNOWN")
         desc = default_report.get("detailed_description", "")
@@ -581,55 +574,6 @@ def ask_gpt_vision_report(result: dict, default_report: dict) -> dict:
             '  "activities": [],\n'
             '  "possible_context": ""\n'
             "}"
-        )
-        
-        user_msg_text = (
-            f"Media file: {fname}. Type: {mtype}. Our system classified this as: {label} "
-            f"(raw score: {raw:.2f}). DeepGuard baseline context: {desc}.\n"
-            f"Please review the attached visual evidence."
-        )
-
-        content_payload = [{"type": "text", "text": user_msg_text}]
-
-        def encode_frame(frame):
-            _, buf = cv2.imencode('.jpg', frame)
-            return base64.b64encode(buf).decode('utf-8')
-
-        # Attach real visual evidence 
-        if mtype == "image":
-            frame = cv2.imread(fpath)
-            if frame is not None:
-                b64 = encode_frame(frame)
-                content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
-        elif mtype == "video":
-            cap = cv2.VideoCapture(fpath)
-            if cap.isOpened():
-                total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                mid = max(total // 2, 0)
-                cap.set(cv2.CAP_PROP_POS_FRAMES, mid)
-                ret, frame = cap.read()
-                if ret:
-                    b64 = encode_frame(frame)
-                    content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
-                cap.release()
-
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": content_payload}
-            ],
-            response_format={ "type": "json_object" }
-        )
-        
-        out_text = response.choices[0].message.content
-        if out_text:
-            return json.loads(out_text)
-
-        return default_report
-    except Exception as e:
-        print(f"GPT Vision augmentation failed: {e}")
-        return default_report"
         )
         
         user_msg = (
@@ -835,8 +779,8 @@ class DeepGuardEngine:
         # 1. Unified combined forensic + scene analysis (Hardcoded base)
         base_report = format_unified_analysis(result)
         
-        # 1b. Try to enrich using GPT Vision LLM if possible
-        result["analysis_report"] = ask_gpt_vision_report(result, base_report)
+        # 1b. Try to enrich using Bytez LLM if possible
+        result["analysis_report"] = ask_bytez_scene_report(result, base_report)
 
         # 2. Quick 4-field summary
         result["quick_summary"] = format_quick_summary(result)

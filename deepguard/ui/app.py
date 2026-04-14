@@ -379,15 +379,36 @@ class DeepGuardApp(tk.Tk):
         self._vis_nb = ttk.Notebook(bot)
         self._vis_nb.pack(fill="both", expand=True)
 
+        self._vis_report   = tk.Frame(self._vis_nb, bg=C["bg"])
         self._vis_gradcam  = tk.Frame(self._vis_nb, bg=C["bg"])
         self._vis_frames   = tk.Frame(self._vis_nb, bg=C["bg"])
         self._vis_spec     = tk.Frame(self._vis_nb, bg=C["bg"])
         self._vis_log      = tk.Frame(self._vis_nb, bg=C["bg"])
 
+        self._vis_nb.add(self._vis_report,  text="  📄  SCENE REPORT  ")
         self._vis_nb.add(self._vis_gradcam, text="  🔥  HEATMAP  ")
         self._vis_nb.add(self._vis_frames,  text="  📊  FRAME SCORES  ")
         self._vis_nb.add(self._vis_spec,    text="  🎵  SPECTROGRAM  ")
         self._vis_nb.add(self._vis_log,     text="  📝  LOG  ")
+
+        # Scene Report panel
+        rc = Card(self._vis_report, "AI SCENE UNDERSTANDING & FORENSICS")
+        rc.pack(fill="both", expand=True, padx=6, pady=6)
+        rb = rc.body()
+        self._report_txt = tk.Text(rb, font=F_SMALL, bg=C["bg"],
+                                   fg=C["text"], relief="flat", bd=0,
+                                   state="disabled", wrap="word",
+                                   insertbackground=C["accent"])
+        rs = tk.Scrollbar(rb, command=self._report_txt.yview,
+                          bg=C["border"], troughcolor=C["bg"])
+        self._report_txt.configure(yscrollcommand=rs.set)
+        rs.pack(side="right", fill="y")
+        self._report_txt.pack(fill="both", expand=True, padx=(4,0))
+
+        self._report_txt.tag_configure("header", font=F_MED, foreground=C["accent2"], spacing1=4, spacing3=4)
+        self._report_txt.tag_configure("key", foreground=C["muted"])
+        self._report_txt.tag_configure("ok", foreground=C["success"])
+        self._report_txt.tag_configure("danger", foreground=C["danger"])
 
         # Heatmap panel
         hc = Card(self._vis_gradcam, "GRAD-CAM  FACE  ANALYSIS",
@@ -1132,6 +1153,11 @@ class DeepGuardApp(tk.Tk):
             self._gradcam_panel.clear("Run analysis to see heatmap")
             self._frames_panel.clear("Run analysis to see frame scores")
             self._spec_panel.clear("Run analysis to see spectrogram")
+            
+            self._report_txt.configure(state="normal")
+            self._report_txt.delete("1.0", "end")
+            self._report_txt.insert("end", "Upload ready. Run analysis to see AI scene report.")
+            self._report_txt.configure(state="disabled")
 
     def _analyze(self):
         if self._analyzing:
@@ -1216,10 +1242,71 @@ class DeepGuardApp(tk.Tk):
 
         # ── Visual panels ──────────────────────────────────────────────
         self._render_visuals(r)
+        self._render_scene_report(r)
 
         # History
         self._add_history(r)
         self._result = r
+        
+        # Default to scene report on complete
+        self._vis_nb.select(0)
+
+    def _render_scene_report(self, r: dict):
+        self._report_txt.configure(state="normal")
+        self._report_txt.delete("1.0", "end")
+        ar = r.get("analysis_report")
+        if not ar:
+            self._report_txt.insert("end", "No scene report available.", "key")
+            self._report_txt.configure(state="disabled")
+            return
+            
+        def _ins(text, tag=""):
+            self._report_txt.insert("end", text, tag)
+
+        _ins("SCENE SUMMARY\n", "header")
+        _ins(ar.get("scene_summary", "N/A") + "\n\n")
+
+        _ins("DETAILED DESCRIPTION\n", "header")
+        _ins(ar.get("detailed_description", "N/A") + "\n\n")
+
+        _ins("FORENSIC ANALYSIS\n", "header")
+        auth = ar.get("authenticity", "Real")
+        obs_tag = "danger" if auth in ("Fake", "Likely Fake") else ("ok" if auth in ("Real", "Likely Real") else "")
+        for obs in ar.get("forensic_analysis", []):
+            _ins(f" • {obs}\n", obs_tag)
+        _ins("\n")
+
+        people = ar.get("people", [])
+        if people:
+            _ins("PEOPLE DETECTED\n", "header")
+            for i, p in enumerate(people):
+                _ins(f" • Person {i+1}: ", "key")
+                _ins(f"{p.get('description','N/A')}\n")
+                _ins("   Emotion: ", "key")
+                _ins(f"{p.get('emotion','N/A')}\n")
+                _ins("   Action : ", "key")
+                _ins(f"{p.get('action','N/A')}\n")
+            _ins("\n")
+
+        _ins("OBJECTS & ACTIVITIES\n", "header")
+        _ins("Objects: ", "key")
+        _ins(", ".join(ar.get("objects", ["None"])) + "\n")
+        _ins("Tasks  : ", "key")
+        _ins(", ".join(ar.get("activities", ["None"])) + "\n\n")
+
+        _ins("POSSIBLE CONTEXT\n", "header")
+        _ins(ar.get("possible_context", "N/A") + "\n")
+        
+        # Frame Report (if video)
+        fr = r.get("frame_report")
+        if fr:
+            _ins("\nVIDEO NARRATIVE (FRAME STORY)\n", "header")
+            # Only dump story from last frame or show snippets
+            _ins("Total frames sampled: ", "key")
+            _ins(f"{len(fr)}\n")
+            _ins(fr[-1].get("scene_story", "N/A") + "\n")
+
+        self._report_txt.configure(state="disabled")
 
     def _render_visuals(self, r: dict):
         """Render all visual panels in a background thread."""
@@ -1243,8 +1330,7 @@ class DeepGuardApp(tk.Tk):
                     if cam is not None and crop is not None:
                         img = render_gradcam(crop, cam, label, conf)
                         self.after(0, lambda i=img: (
-                            self._gradcam_panel.show(i),
-                            self._vis_nb.select(0)    # switch to heatmap tab
+                            self._gradcam_panel.show(i)
                         ))
                     self._frames_panel.clear("Frame scores: N/A for images")
                     self._spec_panel.clear("Spectrogram: N/A for images")
@@ -1254,8 +1340,7 @@ class DeepGuardApp(tk.Tk):
                     if fsc:
                         img = render_frame_scores(fsc, label, conf)
                         self.after(0, lambda i=img: (
-                            self._frames_panel.show(i),
-                            self._vis_nb.select(1)    # frame scores tab
+                            self._frames_panel.show(i)
                         ))
                     self._gradcam_panel.clear("Grad-CAM: run on first key frame")
                     self._spec_panel.clear("Spectrogram: N/A for video")
@@ -1268,8 +1353,7 @@ class DeepGuardApp(tk.Tk):
                     if mel is not None:
                         img = render_spectrogram(mel, ssc, spos, label, conf, dur)
                         self.after(0, lambda i=img: (
-                            self._spec_panel.show(i),
-                            self._vis_nb.select(2)    # spectrogram tab
+                            self._spec_panel.show(i)
                         ))
                     self._gradcam_panel.clear("Grad-CAM: N/A for audio")
                     self._frames_panel.clear("Frame scores: N/A for audio")

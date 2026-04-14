@@ -1308,27 +1308,34 @@ class DeepGuardApp(tk.Tk):
             initialfile=f"deepguard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         )
         if path:
-            # Prefer the strict forensic schema if available
-            forensic = self._result.get("forensic_report")
-            if forensic:
-                export_data = forensic
-            else:
-                export_data = {k: v for k, v in self._result.items()
-                               if not isinstance(v, type(None))
-                               and k not in ("gradcam", "face_crop", "full_mel",
-                                             "forensic_report")}
-                # Convert numpy arrays to lists
-                for k, v in list(export_data.items()):
-                    try:
-                        import numpy as np
-                        if isinstance(v, np.ndarray):
-                            export_data[k] = v.tolist()
-                    except Exception:
-                        pass
+            # Build combined export with both schemas
+            forensic = self._result.get("forensic_report", {})
+            scene    = self._result.get("scene_report", {})
+
+            # Core metadata (safe fields, no numpy arrays)
+            SKIP = {"gradcam", "face_crop", "full_mel", "forensic_report", "scene_report"}
+            meta = {}
+            for k, v in self._result.items():
+                if k in SKIP or v is None:
+                    continue
+                try:
+                    import numpy as np
+                    if isinstance(v, np.ndarray):
+                        v = v.tolist()
+                except Exception:
+                    pass
+                meta[k] = v
+
+            export_data = {
+                "deepguard_version":  "3.0",
+                "analysis_metadata":  meta,
+                "forensic_report":    forensic,
+                "scene_report":       scene,
+            }
             with open(path, "w") as f:
                 json.dump(export_data, f, indent=2)
-            self._log_msg(f"Exported forensic report: {Path(path).name}", "ok")
-            messagebox.showinfo("Saved", f"Forensic report saved to:\n{path}")
+            self._log_msg(f"Exported full report: {Path(path).name}", "ok")
+            messagebox.showinfo("Saved", f"Full DeepGuard report saved to:\n{path}")
 
     def _export_csv(self):
         if not self._history:

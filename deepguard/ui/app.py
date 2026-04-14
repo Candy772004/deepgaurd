@@ -1331,6 +1331,7 @@ class DeepGuardApp(tk.Tk):
                 "analysis_metadata":  meta,
                 "forensic_report":    forensic,
                 "scene_report":       scene,
+                "frame_report":       self._result.get("frame_report"),  # list for video, null otherwise
             }
             with open(path, "w") as f:
                 json.dump(export_data, f, indent=2)

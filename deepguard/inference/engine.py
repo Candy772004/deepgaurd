@@ -4,30 +4,28 @@ DeepGuard Inference Engine
 Unified detection interface for all three modalities.
 Produces rich, structured results including visual data.
 
-Forensic Output Schema
------------------------
-Every predict() result includes a 'forensic_report' key:
-  {
-    "authenticity":      "Real" | "Fake",
-    "confidence":        "XX%",
-    "forensic_analysis": ["Reason 1", ...],
-    "scene_description": "<human-readable sentence>",
-    "objects_detected":  ["object1", ...],
-    "actions_detected":  ["action1", ...]
-  }
+Forensic Output Schema  (forensic_report)
+------------------------------------------
+  { "authenticity", "confidence", "forensic_analysis", "scene_description",
+    "objects_detected", "actions_detected" }
 
-Scene Understanding Schema
----------------------------
-Every predict() result also includes a 'scene_report' key:
-  {
-    "scene_summary":        "Short one-line summary",
-    "detailed_description": "Clear explanation of what is happening",
-    "people": [{"description": "", "emotion": "", "action": ""}],
-    "objects":     [],
-    "environment": "",
-    "activities":  [],
-    "possible_context": "What might be happening overall"
-  }
+Scene Understanding Schema  (scene_report)
+-------------------------------------------
+  { "scene_summary", "detailed_description", "people", "objects",
+    "environment", "activities", "possible_context" }
+
+Frame Understanding Schema  (frame_report)  — VIDEO only
+----------------------------------------------------------
+  [
+    {
+      "frame_id":          "frame_01",
+      "current_event":     "...",
+      "changes_detected":  "...",
+      "ongoing_activity": "...",
+      "scene_story":       "..."
+    },
+    ...
+  ]
 """
 
 import time
@@ -376,6 +374,13 @@ class DeepGuardEngine:
         # Attach the visual scene understanding schema
         result["scene_report"] = format_scene_understanding(result)
 
+        # Attach per-frame video story (video only; null for image/audio)
+        result["frame_report"] = (
+            format_frame_understanding(result)
+            if result.get("media_type") == "video"
+            else None
+        )
+
         return result
 
     def reload_model(self, mode: str):
@@ -650,3 +655,156 @@ def format_scene_understanding(result: dict) -> dict:
         "activities":           activities,
         "possible_context":     possible_context,
     }
+
+
+# ── Frame Understanding Formatter ─────────────────────────────────────────────
+def format_frame_understanding(result: dict) -> list:
+    """
+    Generates a per-frame video story from frame_scores.
+    Only called for video media; predict() sets frame_report = None otherwise.
+
+    Each entry schema:
+    {
+      "frame_id":          "frame_01",
+      "current_event":     "<what is happening in this frame>",
+      "changes_detected":  "<what changed vs previous frame>",
+      "ongoing_activity": "<sustained action across frames>",
+      "scene_story":       "<cumulative narrative up to this frame>"
+    }
+    """
+    frame_scores:  list  = result.get("frame_scores", [])
+    fname:         str   = result.get("file_name", "video")
+    fps:           float = result.get("fps", 25.0)
+    total:         int   = result.get("total_frames", 0)
+    THRESHOLD = 0.60
+
+    if not frame_scores:
+        return []
+
+    n = len(frame_scores)
+    frame_indices = (
+        [int(i * (total - 1) / max(n - 1, 1)) for i in range(n)]
+        if total > 0 else list(range(n))
+    )
+
+    frames_out = []
+    story_so_far: list = []
+
+    for i, score in enumerate(frame_scores):
+        frame_num = frame_indices[i]
+        frame_id  = f"frame_{i+1:02d}"
+        timestamp = frame_num / fps if fps else 0.0
+        ts_str    = f"{timestamp:.2f}s"
+        is_fake   = score >= THRESHOLD
+        fake_pct  = f"{score * 100:.1f}%"
+
+        # ── current_event ─────────────────────────────────────────────────────
+        if is_fake:
+            current_event = (
+                f"Frame {i+1}/{n} at {ts_str} (index {frame_num}): "
+                f"Deepfake artifacts detected — fake probability {fake_pct} "
+                f"exceeds detection threshold (60%)."
+            )
+        else:
+            current_event = (
+                f"Frame {i+1}/{n} at {ts_str} (index {frame_num}): "
+                f"Frame appears authentic — fake probability {fake_pct} "
+                f"below detection threshold (60%)."
+            )
+
+        # ── changes_detected ──────────────────────────────────────────────────
+        if i == 0:
+            changes_detected = "First sampled frame — no previous frame to compare."
+        else:
+            prev  = frame_scores[i - 1]
+            delta = score - prev
+            sign  = "+" if delta >= 0 else ""
+
+            if prev >= THRESHOLD and is_fake:
+                changes_detected = (
+                    f"Deepfake signal persists from frame {i} "
+                    f"(score Δ {sign}{delta*100:.1f}%). Sustained manipulation."
+                )
+            elif prev < THRESHOLD and not is_fake:
+                changes_detected = (
+                    f"Authentic signal persists from frame {i} "
+                    f"(score Δ {sign}{delta*100:.1f}%). No new anomalies."
+                )
+            elif prev < THRESHOLD and is_fake:
+                changes_detected = (
+                    f"State change: frame {i} authentic ({prev*100:.1f}%) → "
+                    f"frame {i+1} fake ({score*100:.1f}%). "
+                    f"New artifact zone entered (+{abs(delta)*100:.1f}%)."
+                )
+            else:
+                changes_detected = (
+                    f"State change: frame {i} fake ({prev*100:.1f}%) → "
+                    f"frame {i+1} authentic ({score*100:.1f}%). "
+                    f"Artifacts reduced ({abs(delta)*100:.1f}% drop)."
+                )
+
+        # ── ongoing_activity ──────────────────────────────────────────────────
+        seen          = frame_scores[:i + 1]
+        n_fake_so_far = sum(1 for s in seen if s >= THRESHOLD)
+        fake_ratio    = n_fake_so_far / len(seen)
+
+        if fake_ratio >= 0.6:
+            ongoing_activity = (
+                f"Deepfake analysis in progress — {n_fake_so_far}/{i+1} frames "
+                f"show manipulation. BiLSTM tracking artifact propagation."
+            )
+        elif fake_ratio >= 0.3:
+            ongoing_activity = (
+                f"Mixed signal — {n_fake_so_far}/{i+1} frames flagged. "
+                f"Localised manipulation zones tracked across the timeline."
+            )
+        else:
+            ongoing_activity = (
+                f"Authenticity verification — {i+1-n_fake_so_far}/{i+1} frames "
+                f"appear genuine. Monitoring for artifact onset."
+            )
+
+        # ── scene_story (cumulative) ───────────────────────────────────────────
+        if i == 0:
+            sentence = (
+                f"Analysis begins on '{fname}'. "
+                f"Frame 1 scores {fake_pct} fake probability — "
+                + ("immediate deepfake signal detected." if is_fake
+                   else "no manipulation artifacts at start.")
+            )
+        else:
+            prev = frame_scores[i - 1]
+            if is_fake:
+                if prev >= THRESHOLD:
+                    sentence = (
+                        f"At {ts_str}, frame {i+1} continues to exhibit "
+                        f"deepfake markers (score {fake_pct})."
+                    )
+                else:
+                    sentence = (
+                        f"At {ts_str}, a new deepfake zone emerges in "
+                        f"frame {i+1} (score jumps to {fake_pct})."
+                    )
+            else:
+                if prev < THRESHOLD:
+                    sentence = (
+                        f"At {ts_str}, frame {i+1} remains authentic "
+                        f"({fake_pct} fake score)."
+                    )
+                else:
+                    sentence = (
+                        f"At {ts_str}, frame {i+1} shows recovery — "
+                        f"artifacts reduced to {fake_pct}."
+                    )
+
+        story_so_far.append(sentence)
+
+        frames_out.append({
+            "frame_id":          frame_id,
+            "current_event":     current_event,
+            "changes_detected":  changes_detected,
+            "ongoing_activity": ongoing_activity,
+            "scene_story":       " ".join(story_so_far),
+        })
+
+    return frames_out

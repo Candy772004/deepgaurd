@@ -365,11 +365,13 @@ class DeepGuardApp(tk.Tk):
                      bg=C["surface"], fg=C["text"], anchor="w"
                      ).grid(row=r, column=co+1, sticky="w", padx=(4,16), pady=2)
 
-        # Export
+        # Actions
         ef = tk.Frame(right, bg=C["bg"])
         ef.pack(pady=6)
-        GlowBtn(ef, "💾  EXPORT JSON", cmd=self._export,
-                w=170, h=32, color=C["accent2"]).pack()
+        GlowBtn(ef, "💾  EXPORT", cmd=self._export,
+                w=100, h=32, color=C["accent2"]).pack(side="left", padx=4)
+        GlowBtn(ef, "⛶  FULL REPORT", cmd=self._show_full_report,
+                w=160, h=32, color=C["accent"]).pack(side="left", padx=4)
 
         # ── Bottom: visual analysis panels ───────────────────────────────
         bot = tk.Frame(root, bg=C["bg"])
@@ -1251,17 +1253,53 @@ class DeepGuardApp(tk.Tk):
         # Default to scene report on complete
         self._vis_nb.select(0)
 
-    def _render_scene_report(self, r: dict):
-        self._report_txt.configure(state="normal")
-        self._report_txt.delete("1.0", "end")
+    def _show_full_report(self):
+        if not hasattr(self, "_result") or not self._result:
+            messagebox.showinfo("No Result", "Run detection first.")
+            return
+
+        top = tk.Toplevel(self)
+        top.title("AI Scene Report")
+        top.geometry("800x600")
+        top.configure(bg=C["bg"])
+        
+        try:
+            top.iconbitmap("assets/icon.ico")
+        except Exception:
+            pass
+
+        rc = Card(top, "AI SCENE UNDERSTANDING & FORENSICS")
+        rc.pack(fill="both", expand=True, padx=12, pady=12)
+        rb = rc.body(pady=8)
+        
+        rtxt = tk.Text(rb, font=F_BODY, bg=C["surface2"],
+                       fg=C["text"], relief="flat", bd=0,
+                       state="normal", wrap="word", padx=16, pady=16,
+                       insertbackground=C["accent"])
+        rs = ttk.Scrollbar(rb, orient="vertical", command=rtxt.yview)
+        rtxt.configure(yscrollcommand=rs.set)
+        rs.pack(side="right", fill="y")
+        rtxt.pack(fill="both", expand=True)
+
+        rtxt.tag_configure("header", font=F_BIG, foreground=C["accent2"], spacing1=12, spacing3=6)
+        rtxt.tag_configure("key", font=("Segoe UI", 11, "bold"), foreground=C["muted"])
+        rtxt.tag_configure("ok", foreground=C["success"])
+        rtxt.tag_configure("danger", foreground=C["danger"])
+        
+        self._render_scene_report(self._result, rtxt)
+
+    def _render_scene_report(self, r: dict, target_txt=None):
+        tw = target_txt if target_txt else self._report_txt
+        tw.configure(state="normal")
+        tw.delete("1.0", "end")
         ar = r.get("analysis_report")
         if not ar:
-            self._report_txt.insert("end", "No scene report available.", "key")
-            self._report_txt.configure(state="disabled")
+            tw.insert("end", "No scene report available.", "key")
+            tw.configure(state="disabled")
             return
             
         def _ins(text, tag=""):
-            self._report_txt.insert("end", text, tag)
+            tw.insert("end", text, tag)
 
         _ins("SCENE SUMMARY\n", "header")
         _ins(ar.get("scene_summary", "N/A") + "\n\n")
@@ -1306,7 +1344,7 @@ class DeepGuardApp(tk.Tk):
             _ins(f"{len(fr)}\n")
             _ins(fr[-1].get("scene_story", "N/A") + "\n")
 
-        self._report_txt.configure(state="disabled")
+        tw.configure(state="disabled")
 
     def _render_visuals(self, r: dict):
         """Render all visual panels in a background thread."""

@@ -526,7 +526,7 @@ def ask_bytez_scene_report(result: dict, default_report: dict) -> dict:
     try:
         # User explicitly provided this key and model for Scene Generation
         sdk = Bytez("c73b3ae05a6f4b328ce2914ae76e52ac")
-        model = sdk.model("openai/gpt-4o")
+        model = sdk.model("openai/gpt-oss-20b")
         
         mtype = result.get("media_type", "media")
         fname = result.get("file_name", "")
@@ -584,12 +584,14 @@ def ask_bytez_scene_report(result: dict, default_report: dict) -> dict:
             {"role": "user", "content": f"{sys_prompt}\n\nHere is the target to analyze:\n{user_msg}"}
         ])
         
-        if out and isinstance(out, dict) and "output" in out:
-            text = out["output"]
+        if out and hasattr(out, "output") and out.output:
+            text = out.output
             if isinstance(text, list) and len(text) > 0 and "content" in text[0]:
                 text = text[0]["content"]
             elif isinstance(text, dict) and "content" in text:
                 text = text["content"]
+            elif not isinstance(text, str):
+                text = str(text)
             
             start = text.find("{")
             end = text.rfind("}")

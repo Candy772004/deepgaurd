@@ -526,7 +526,7 @@ def ask_bytez_scene_report(result: dict, default_report: dict) -> dict:
     try:
         # User explicitly provided this key and model for Scene Generation
         sdk = Bytez("c73b3ae05a6f4b328ce2914ae76e52ac")
-        model = sdk.model("openai/gpt-oss-20b")
+        model = sdk.model("openai/gpt-4.1-nano")
         
         mtype = result.get("media_type", "media")
         fname = result.get("file_name", "")

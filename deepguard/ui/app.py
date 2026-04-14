@@ -1308,12 +1308,9 @@ class DeepGuardApp(tk.Tk):
             initialfile=f"deepguard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         )
         if path:
-            # Build combined export with both schemas
-            forensic = self._result.get("forensic_report", {})
-            scene    = self._result.get("scene_report", {})
-
-            # Core metadata (safe fields, no numpy arrays)
-            SKIP = {"gradcam", "face_crop", "full_mel", "forensic_report", "scene_report"}
+            SKIP = {"gradcam", "face_crop", "full_mel",
+                    "analysis_report", "quick_summary", "frame_report",
+                    "forensic_report", "scene_report"}
             meta = {}
             for k, v in self._result.items():
                 if k in SKIP or v is None:
@@ -1327,11 +1324,11 @@ class DeepGuardApp(tk.Tk):
                 meta[k] = v
 
             export_data = {
-                "deepguard_version":  "3.0",
-                "analysis_metadata":  meta,
-                "forensic_report":    forensic,
-                "scene_report":       scene,
-                "frame_report":       self._result.get("frame_report"),  # list for video, null otherwise
+                "deepguard_version": "3.0",
+                "analysis_metadata": meta,
+                "quick_summary":     self._result.get("quick_summary", {}),
+                "analysis_report":   self._result.get("analysis_report", {}),
+                "frame_report":      self._result.get("frame_report"),   # list for video, null otherwise
             }
             with open(path, "w") as f:
                 json.dump(export_data, f, indent=2)

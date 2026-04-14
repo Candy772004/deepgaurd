@@ -394,10 +394,10 @@ class DeepGuardApp(tk.Tk):
         # Scene Report panel
         rc = Card(self._vis_report, "AI SCENE UNDERSTANDING & FORENSICS")
         rc.pack(fill="both", expand=True, padx=6, pady=6)
-        rb = rc.body()
-        self._report_txt = tk.Text(rb, font=F_SMALL, bg=C["bg"],
+        rb = rc.body(pady=4)
+        self._report_txt = tk.Text(rb, font=F_SMALL, bg=C["bg"], height=13,
                                    fg=C["text"], relief="flat", bd=0,
-                                   state="disabled", wrap="word",
+                                   state="disabled", wrap="word", padx=8, pady=8,
                                    insertbackground=C["accent"])
         rs = tk.Scrollbar(rb, command=self._report_txt.yview,
                           bg=C["border"], troughcolor=C["bg"])

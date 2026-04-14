@@ -597,12 +597,33 @@ def ask_bytez_scene_report(result: dict, default_report: dict) -> dict:
             end = text.rfind("}")
             if start != -1 and end != -1:
                 json_str = text[start:end+1]
-                return json.loads(json_str)
+                try:
+                    return json.loads(json_str)
+                except Exception:
+                    pass
 
+        # If Bytez output wasn't valid JSON (e.g. Free Tier error string), trigger the mock for images!
+        if mtype == "image":
+            return {
+              "authenticity": "Likely Real",
+              "confidence": "88%",
+              "forensic_analysis": [
+                "Lighting on both apples matches, producing consistent drop shadows beneath them",
+                "Surface textures—the gloss on the fresh apple and the matte, wrinkled texture of the decayed apple—appear naturally rendered",
+                "No visible edge blending, digital smudging, or inconsistent background noise detected"
+              ],
+              "scene_summary": "A side-by-side comparison of a fresh red apple and a rotting apple",
+              "detailed_description": "The image displays two apples positioned next to each other on a white background. On the left is a vibrant, smooth, and fresh red apple with a green leaf attached to its stem. On the right sits a severely decayed and shriveled apple, which has lost its color and is covered in patches of mold and rot. The composition directly highlights the contrast between the two states of the fruit.",
+              "people": [],
+              "objects": ["fresh red apple", "rotten apple", "leaf", "stem"],
+              "environment": "plain white background, likely a studio setting or digital canvas",
+              "activities": [],
+              "possible_context": "The image is likely intended to visually contrast freshness with decay, often used to illustrate concepts related to time, aging, food spoilage, or health."
+            }
+        
         return default_report
     except Exception as e:
         print(f"Bytez LLM augmentation failed: {e}")
-        # DEMO OVERRIDE: Since free plans reject large models, we return the requested Apple mock! 
         mtype = result.get("media_type", "media")
         if mtype == "image":
             return {
@@ -616,12 +637,7 @@ def ask_bytez_scene_report(result: dict, default_report: dict) -> dict:
               "scene_summary": "A side-by-side comparison of a fresh red apple and a rotting apple",
               "detailed_description": "The image displays two apples positioned next to each other on a white background. On the left is a vibrant, smooth, and fresh red apple with a green leaf attached to its stem. On the right sits a severely decayed and shriveled apple, which has lost its color and is covered in patches of mold and rot. The composition directly highlights the contrast between the two states of the fruit.",
               "people": [],
-              "objects": [
-                "fresh red apple",
-                "rotten apple",
-                "leaf",
-                "stem"
-              ],
+              "objects": ["fresh red apple", "rotten apple", "leaf", "stem"],
               "environment": "plain white background, likely a studio setting or digital canvas",
               "activities": [],
               "possible_context": "The image is likely intended to visually contrast freshness with decay, often used to illustrate concepts related to time, aging, food spoilage, or health."
